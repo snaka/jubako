@@ -12,12 +12,15 @@ struct ContentView: View {
     @State private var currentPath: String = NSHomeDirectory()
     @State private var byParent: [String: [ScanEntry]] = [:]
     @State private var scanTask: Task<Void, Never>?
+    @State private var snapshotTimestamp: Date?
+    @State private var hasLoadedSnapshot: Bool = false
 
     enum Phase { case idle, scanning, done }
 
     var body: some View {
         VStack(spacing: 0) {
             controlBar
+            if let ts = snapshotTimestamp, phase == .done { snapshotBanner(ts) }
             if errorCount > 0 { errorBanner }
             if !deferredPaths.isEmpty { deferredBanner }
             if phase == .done {
@@ -28,6 +31,12 @@ struct ContentView: View {
             list
         }
         .frame(minWidth: 720, minHeight: 480)
+        .onAppear {
+            if !hasLoadedSnapshot {
+                hasLoadedSnapshot = true
+                loadSnapshotIfAvailable()
+            }
+        }
     }
 
     // MARK: - Control bar
@@ -71,6 +80,32 @@ struct ContentView: View {
     }
 
     // MARK: - Banners
+
+    private func snapshotBanner(_ ts: Date) -> some View {
+        let age = Date().timeIntervalSince(ts)
+        let isStale = age > 60 * 60 * 24 * 7  // 7 days
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        let relative = formatter.localizedString(for: ts, relativeTo: Date())
+        return HStack(spacing: 8) {
+            Image(systemName: isStale ? "clock.badge.exclamationmark.fill" : "clock")
+                .foregroundStyle(isStale ? .orange : .secondary)
+            Text(isStale
+                ? "Snapshot from \(relative) — likely stale, consider rescanning."
+                : "Snapshot from \(relative).")
+                .font(.caption)
+            Spacer()
+            Button("Rescan") {
+                scanTask = Task { await runScan(roots: [NSHomeDirectory()], merge: false) }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .disabled(phase == .scanning)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background((isStale ? Color.orange : Color.secondary).opacity(0.08))
+    }
 
     private var errorBanner: some View {
         HStack {
@@ -299,6 +334,13 @@ struct ContentView: View {
                     }
                 case .finished(let n, let b, let d):
                     let synthesized = synthesizeShallowDirs(byParent: localByParent, rootPath: homeRoot)
+                    let snapshotData = (
+                        rootPath: homeRoot,
+                        byParent: synthesized,
+                        totalFiles: isRetry ? (await MainActor.run { liveFiles } + n) : n,
+                        totalBytes: isRetry ? (await MainActor.run { liveBytes } + b) : b,
+                        elapsed: isRetry ? (await MainActor.run { elapsed } + d) : d
+                    )
                     await MainActor.run {
                         if isRetry {
                             liveFiles += n
@@ -310,7 +352,27 @@ struct ContentView: View {
                             elapsed = d
                         }
                         byParent = synthesized
+                        snapshotTimestamp = Date()
                         phase = .done
+                    }
+                    let captured = await MainActor.run { (
+                        errorCount: errorCount,
+                        lastError: lastError,
+                        deferredPaths: deferredPaths
+                    ) }
+                    Task.detached(priority: .background) {
+                        let snap = ScanSnapshot(
+                            scannedAt: Date(),
+                            rootPath: snapshotData.rootPath,
+                            totalFiles: snapshotData.totalFiles,
+                            totalBytes: snapshotData.totalBytes,
+                            elapsed: snapshotData.elapsed,
+                            errorCount: captured.errorCount,
+                            lastError: captured.lastError,
+                            deferredPaths: captured.deferredPaths,
+                            entriesByParent: SnapshotStore.prune(snapshotData.byParent)
+                        )
+                        SnapshotStore.save(snap)
                     }
                 }
             }
@@ -319,6 +381,21 @@ struct ContentView: View {
     }
 
     // MARK: - Helpers
+
+    private func loadSnapshotIfAvailable() {
+        guard let snap = SnapshotStore.load() else { return }
+        rootPath = snap.rootPath
+        currentPath = snap.rootPath
+        byParent = snap.entriesByParent
+        liveFiles = snap.totalFiles
+        liveBytes = snap.totalBytes
+        elapsed = snap.elapsed
+        errorCount = snap.errorCount
+        lastError = snap.lastError
+        deferredPaths = snap.deferredPaths
+        snapshotTimestamp = snap.scannedAt
+        phase = .done
+    }
 
     private func openFullDiskAccessSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {

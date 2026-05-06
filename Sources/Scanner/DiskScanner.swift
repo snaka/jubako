@@ -1,13 +1,17 @@
 import Foundation
 import Darwin
 
-public struct ScanEntry: Sendable, Hashable, Identifiable {
+public struct ScanEntry: Sendable, Hashable, Identifiable, Codable {
     public var id: String { path }
     public let path: String
     public let size: Int64
     public let isDirectory: Bool
     public let modifiedAt: Date
     public let accessedAt: Date
+
+    private enum CodingKeys: String, CodingKey {
+        case path, size, isDirectory, modifiedAt, accessedAt
+    }
 }
 
 public enum ScanEvent: Sendable {
