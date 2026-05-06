@@ -15,10 +15,38 @@ struct ContentView: View {
     @State private var snapshotTimestamp: Date?
     @State private var hasLoadedSnapshot: Bool = false
     @State private var isSaving: Bool = false
+    @State private var showOnboarding: Bool = false
 
     enum Phase { case idle, scanning, done }
 
     var body: some View {
+        Group {
+            if showOnboarding {
+                OnboardingView(
+                    onContinueWithout: { showOnboarding = false },
+                    onRecheck: { showOnboarding = false }
+                )
+            } else {
+                mainContent
+            }
+        }
+        .frame(minWidth: 720, minHeight: 480)
+        .onAppear {
+            if !hasLoadedSnapshot {
+                hasLoadedSnapshot = true
+                loadSnapshotIfAvailable()
+                // First-launch onboarding only fires when the user has no
+                // prior snapshot AND macOS reports we don't have Full Disk
+                // Access. Returning users see the regular UI plus the
+                // existing deferred banner.
+                if phase == .idle && !FDAProbe.hasAccess() {
+                    showOnboarding = true
+                }
+            }
+        }
+    }
+
+    private var mainContent: some View {
         VStack(spacing: 0) {
             controlBar
             if isSaving { savingBanner }
@@ -31,13 +59,6 @@ struct ContentView: View {
             }
             Divider()
             list
-        }
-        .frame(minWidth: 720, minHeight: 480)
-        .onAppear {
-            if !hasLoadedSnapshot {
-                hasLoadedSnapshot = true
-                loadSnapshotIfAvailable()
-            }
         }
     }
 
