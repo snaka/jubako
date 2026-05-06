@@ -23,12 +23,20 @@ public enum SnapshotStore {
     public static let perParentFileCap: Int = 100
 
     public static var url: URL {
-        let support = FileManager.default
+        supportDirectory.appendingPathComponent("snapshot.bin")
+    }
+
+    /// Old plist location, used only to delete leftover files from the
+    /// previous format on first launch after upgrade.
+    private static var legacyPlistURL: URL {
+        supportDirectory.appendingPathComponent("snapshot.plist")
+    }
+
+    private static var supportDirectory: URL {
+        FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask)
             .first!
-        return support
             .appendingPathComponent("Jubako", isDirectory: true)
-            .appendingPathComponent("snapshot.plist")
     }
 
     private static let inFlightLock = NSLock()
@@ -53,14 +61,15 @@ public enum SnapshotStore {
             inFlightLock.unlock()
         }
 
-        let dir = url.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let encoder = PropertyListEncoder()
-        encoder.outputFormat = .binary
+        try? FileManager.default.createDirectory(at: supportDirectory, withIntermediateDirectories: true)
+        // Drop any leftover plist from the previous format.
+        try? FileManager.default.removeItem(at: legacyPlistURL)
+        let started = Date()
         do {
-            let data = try encoder.encode(snapshot)
-            try data.write(to: url, options: .atomic)
-            NSLog("Jubako: snapshot saved (%d bytes) at %@", data.count, url.path)
+            try BinarySnapshotIO.write(snapshot, to: url)
+            let bytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            let elapsed = Date().timeIntervalSince(started)
+            NSLog("Jubako: snapshot saved (%d bytes, %.2fs) at %@", bytes, elapsed, url.path)
         } catch {
             NSLog("Jubako: snapshot save failed: %@", error.localizedDescription)
         }
@@ -68,12 +77,14 @@ public enum SnapshotStore {
 
     public static func load() -> ScanSnapshot? {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let started = Date()
         do {
-            let data = try Data(contentsOf: url)
-            return try PropertyListDecoder().decode(ScanSnapshot.self, from: data)
+            let snap = try BinarySnapshotIO.read(from: url)
+            let elapsed = Date().timeIntervalSince(started)
+            NSLog("Jubako: snapshot loaded (%.2fs)", elapsed)
+            return snap
         } catch {
-            // Corrupt or version-incompatible snapshot. Delete it so we don't
-            // keep failing on subsequent launches.
+            NSLog("Jubako: snapshot load failed (%@); deleting", error.localizedDescription)
             try? FileManager.default.removeItem(at: url)
             return nil
         }
