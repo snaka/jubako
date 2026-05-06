@@ -106,33 +106,44 @@ struct ContentView: View {
         topFiles = []
         elapsed = 0
 
-        var collected: [ScanEntry] = []
-        collected.reserveCapacity(50_000)
+        // Run the event consumption loop off the main actor; only hop back
+        // to MainActor on rare events (progress / error / finished).
+        await Task.detached(priority: .userInitiated) {
+            var collected: [ScanEntry] = []
+            collected.reserveCapacity(50_000)
 
-        let options = ScanOptions(
-            skipPathPrefixes: DiskScanner.defaultSkipPathPrefixesForHome(root)
-        )
-        let scanner = DiskScanner()
-        for await event in scanner.scan(root: root, options: options) {
-            switch event {
-            case .progress:
-                // live counts already updated on .file events; nothing to do.
-                break
-            case .file(let f):
-                collected.append(f)
-                liveFiles += 1
-                liveBytes += f.size
-            case .directory:
-                break
-            case .error(let p, let m):
-                errorCount += 1
-                lastError = "\(p): \(m)"
-            case .finished(_, _, let d):
-                elapsed = d
-                topFiles = Array(collected.sorted { $0.size > $1.size }.prefix(100))
-                phase = .done
+            let options = ScanOptions(
+                skipPathPrefixes: DiskScanner.defaultSkipPathPrefixesForHome(root)
+            )
+            let scanner = DiskScanner()
+            for await event in scanner.scan(root: root, options: options) {
+                switch event {
+                case .progress(let n, let b, _):
+                    await MainActor.run {
+                        liveFiles = n
+                        liveBytes = b
+                    }
+                case .file(let f):
+                    collected.append(f)
+                case .directory:
+                    break
+                case .error(let p, let m):
+                    await MainActor.run {
+                        errorCount += 1
+                        lastError = "\(p): \(m)"
+                    }
+                case .finished(let n, let b, let d):
+                    let top = Array(collected.sorted { $0.size > $1.size }.prefix(100))
+                    await MainActor.run {
+                        liveFiles = n
+                        liveBytes = b
+                        elapsed = d
+                        topFiles = top
+                        phase = .done
+                    }
+                }
             }
-        }
+        }.value
         scanTask = nil
     }
 
