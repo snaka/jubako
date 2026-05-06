@@ -255,54 +255,8 @@ struct ContentView: View {
     // MARK: - List
 
     private var list: some View {
-        Group {
-            if phase == .done && entriesAtCurrent.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "tray")
-                        .font(.system(size: 32))
-                        .foregroundStyle(.tertiary)
-                    Text("No entries here")
-                        .foregroundStyle(.secondary)
-                    Text("This folder may have been skipped due to permissions, or contains only items below the display threshold.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List(entriesAtCurrent) { entry in
-                    Button {
-                        if entry.isDirectory {
-                            navigate(to: entry.path)
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: entry.isDirectory ? "folder.fill" : "doc")
-                                .foregroundStyle(entry.isDirectory ? .blue : .gray)
-                                .frame(width: 18)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text((entry.path as NSString).lastPathComponent)
-                                    .lineLimit(1)
-                                    .truncationMode(.middle)
-                                Text(entry.modifiedAt.formatted(date: .abbreviated, time: .omitted))
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            Spacer()
-                            Text(byteString(entry.size))
-                                .font(.system(.body, design: .monospaced))
-                            if entry.isDirectory {
-                                Image(systemName: "chevron.right")
-                                    .foregroundStyle(.tertiary)
-                                    .font(.caption)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
+        BentoGridView(entries: entriesAtCurrent) { entry in
+            navigate(to: entry.path)
         }
     }
 
