@@ -14,13 +14,15 @@ struct ContentView: View {
     @State private var scanTask: Task<Void, Never>?
     @State private var snapshotTimestamp: Date?
     @State private var hasLoadedSnapshot: Bool = false
+    @State private var isSaving: Bool = false
 
     enum Phase { case idle, scanning, done }
 
     var body: some View {
         VStack(spacing: 0) {
             controlBar
-            if let ts = snapshotTimestamp, phase == .done { snapshotBanner(ts) }
+            if isSaving { savingBanner }
+            if let ts = snapshotTimestamp, phase == .done, !isSaving { snapshotBanner(ts) }
             if errorCount > 0 { errorBanner }
             if !deferredPaths.isEmpty { deferredBanner }
             if phase == .done {
@@ -80,6 +82,20 @@ struct ContentView: View {
     }
 
     // MARK: - Banners
+
+    private var savingBanner: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Saving snapshot… (don't quit until this finishes)")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(Color.secondary.opacity(0.08))
+    }
 
     private func snapshotBanner(_ ts: Date) -> some View {
         let age = Date().timeIntervalSince(ts)
@@ -355,12 +371,11 @@ struct ContentView: View {
                         snapshotTimestamp = Date()
                         phase = .done
                     }
-                    let captured = await MainActor.run { (
-                        errorCount: errorCount,
-                        lastError: lastError,
-                        deferredPaths: deferredPaths
-                    ) }
-                    Task.detached(priority: .background) {
+                    let captured = await MainActor.run { () -> (errorCount: Int, lastError: String, deferredPaths: [String]) in
+                        isSaving = true
+                        return (errorCount, lastError, deferredPaths)
+                    }
+                    Task.detached(priority: .userInitiated) {
                         let snap = ScanSnapshot(
                             scannedAt: Date(),
                             rootPath: snapshotData.rootPath,
@@ -373,6 +388,7 @@ struct ContentView: View {
                             entriesByParent: SnapshotStore.prune(snapshotData.byParent)
                         )
                         SnapshotStore.save(snap)
+                        await MainActor.run { isSaving = false }
                     }
                 }
             }
@@ -412,32 +428,53 @@ struct ContentView: View {
 /// that the scanner doesn't emit `.directory` events for. Each synth's size is
 /// the sum of its known children, processed deepest-first so parent sums
 /// pick up child synths.
+///
+/// Performance: pre-computes a Set<String> of dir paths per parent so the
+/// "is this dir already listed under its grandparent?" check is O(1).
+/// Without that, the check is O(M) per dir × O(N) dirs = O(N²/avg_M).
 private func synthesizeShallowDirs(
     byParent: [String: [ScanEntry]],
     rootPath: String
 ) -> [String: [ScanEntry]] {
     var result = byParent
+
+    // For each parent, collect the set of dir-paths that are listed there.
+    var dirsListedIn: [String: Set<String>] = [:]
+    dirsListedIn.reserveCapacity(result.count)
+    for (parent, entries) in result {
+        var set = Set<String>()
+        for e in entries where e.isDirectory {
+            set.insert(e.path)
+        }
+        if !set.isEmpty {
+            dirsListedIn[parent] = set
+        }
+    }
+
+    let rootPrefix = rootPath + "/"
     var toSynthesize: [String] = []
+    toSynthesize.reserveCapacity(64)
 
     for dir in result.keys {
         if dir == rootPath { continue }
         if dir.isEmpty || dir == "/" { continue }
-        if !dir.hasPrefix(rootPath + "/") { continue }
+        if !dir.hasPrefix(rootPrefix) { continue }
         let grandparent = (dir as NSString).deletingLastPathComponent
         if grandparent.isEmpty || grandparent == "/" { continue }
-        let listed = result[grandparent]?.contains(where: { $0.path == dir }) ?? false
-        if !listed {
-            toSynthesize.append(dir)
-        }
+        if dirsListedIn[grandparent]?.contains(dir) == true { continue }
+        toSynthesize.append(dir)
     }
 
-    toSynthesize.sort { a, b in
-        a.split(separator: "/").count > b.split(separator: "/").count
+    // Deepest first so a parent's synth picks up its children's synths.
+    toSynthesize.sort { lhs, rhs in
+        lhs.utf8.lazy.filter { $0 == UInt8(ascii: "/") }.count
+            > rhs.utf8.lazy.filter { $0 == UInt8(ascii: "/") }.count
     }
 
     for path in toSynthesize {
         let children = result[path] ?? []
-        let total = children.reduce(0) { $0 + $1.size }
+        var total: Int64 = 0
+        for c in children { total += c.size }
         let entry = ScanEntry(
             path: path,
             size: total,

@@ -13,11 +13,14 @@ public struct ScanSnapshot: Codable, Sendable {
 }
 
 public enum SnapshotStore {
-    /// File size threshold below which files are dropped before persisting.
-    /// Drilldown still shows directories (via per-dir aggregates), so the cost
-    /// of pruning small files is just hiding them in the per-folder file list,
-    /// which is acceptable for "find big stuff" use cases.
-    public static let fileSizeThresholdBytes: Int64 = 100 * 1024
+    /// Files smaller than this are dropped before persisting. A 1 MB threshold
+    /// roughly halves the persisted entry count on a typical macOS home and
+    /// makes the snapshot save complete in seconds rather than tens of seconds.
+    public static let fileSizeThresholdBytes: Int64 = 1024 * 1024
+
+    /// Per-directory cap on persisted file entries. Caps blow-up cases like
+    /// huge `node_modules` trees while leaving typical folders untouched.
+    public static let perParentFileCap: Int = 100
 
     public static var url: URL {
         let support = FileManager.default
@@ -28,8 +31,28 @@ public enum SnapshotStore {
             .appendingPathComponent("snapshot.plist")
     }
 
+    private static let inFlightLock = NSLock()
+    private static var inFlightCount: Int = 0
+
+    /// True while at least one save is running; used by AppDelegate to delay
+    /// app termination until persistence finishes.
+    public static var hasPendingSave: Bool {
+        inFlightLock.lock()
+        defer { inFlightLock.unlock() }
+        return inFlightCount > 0
+    }
+
     /// Synchronous; expected to be called from a background task.
     public static func save(_ snapshot: ScanSnapshot) {
+        inFlightLock.lock()
+        inFlightCount += 1
+        inFlightLock.unlock()
+        defer {
+            inFlightLock.lock()
+            inFlightCount -= 1
+            inFlightLock.unlock()
+        }
+
         let dir = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let encoder = PropertyListEncoder()
@@ -37,9 +60,9 @@ public enum SnapshotStore {
         do {
             let data = try encoder.encode(snapshot)
             try data.write(to: url, options: .atomic)
+            NSLog("Jubako: snapshot saved (%d bytes) at %@", data.count, url.path)
         } catch {
-            // Don't fail the scan on a persistence error; just log to stderr.
-            FileHandle.standardError.write(Data("snapshot save failed: \(error)\n".utf8))
+            NSLog("Jubako: snapshot save failed: %@", error.localizedDescription)
         }
     }
 
@@ -60,13 +83,28 @@ public enum SnapshotStore {
         try? FileManager.default.removeItem(at: url)
     }
 
-    /// Drop files below the size threshold; keep all directories intact so
-    /// drilldown navigation works the same.
+    /// Drop small files and cap each parent's file count. All directories
+    /// are kept so drilldown navigation works identically.
     public static func prune(_ byParent: [String: [ScanEntry]]) -> [String: [ScanEntry]] {
         var result: [String: [ScanEntry]] = [:]
         result.reserveCapacity(byParent.count)
         for (parent, entries) in byParent {
-            result[parent] = entries.filter { $0.isDirectory || $0.size >= fileSizeThresholdBytes }
+            var dirs: [ScanEntry] = []
+            var files: [ScanEntry] = []
+            dirs.reserveCapacity(entries.count)
+            files.reserveCapacity(entries.count)
+            for e in entries {
+                if e.isDirectory {
+                    dirs.append(e)
+                } else if e.size >= fileSizeThresholdBytes {
+                    files.append(e)
+                }
+            }
+            if files.count > perParentFileCap {
+                files.sort { $0.size > $1.size }
+                files = Array(files.prefix(perParentFileCap))
+            }
+            result[parent] = dirs + files
         }
         return result
     }
