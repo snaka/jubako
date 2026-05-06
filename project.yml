@@ -1,0 +1,45 @@
+name: Jubako
+options:
+  bundleIdPrefix: com.snaka
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+
+targets:
+  Jubako:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources
+    resources:
+      - path: Resources
+    info:
+      path: Sources/Info.plist
+      properties:
+        CFBundleName: Jubako
+        CFBundleDisplayName: Jubako
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        NSHumanReadableCopyright: "Copyright © 2026 snaka. MIT Licensed."
+        NSHighResolutionCapable: true
+    entitlements:
+      path: Sources/Jubako.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+        com.apple.security.files.user-selected.read-only: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.snaka.jubako
+        GENERATE_INFOPLIST_FILE: NO
