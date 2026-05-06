@@ -1,37 +1,56 @@
-# Jubako
+<div align="center">
+  <img src="Resources/Assets.xcassets/AppIcon.appiconset/icon_256.png" width="160" height="160" alt="Jubako icon">
+  <h1>Jubako</h1>
+  <p>A macOS-native, open-source disk analyzer with a Bento-grid UI.</p>
+</div>
 
-A macOS-native, open-source disk analyzer with a folder-drilldown UI.
+> **Status: v0.2.0 — early but usable.**
+> Scanner, drilldown, persistence, Bento layout, category color-coding,
+> and Full Disk Access onboarding are working. Time-axis staleness
+> heatmap and differential scan from [DESIGN.md](DESIGN.md) are next.
 
-> **Status: v0.1.0 — early but usable.**
-> The scanner, drilldown, and persistence are working. The Bento grid,
-> staleness heatmap, and category auto-classification described in
-> [DESIGN.md](DESIGN.md) are upcoming.
+## What's in v0.2.0
 
-## What's in v0.1.0
+- **Bento grid layout** — top 12 entries per folder render as one hero
+  card, three secondary, four medium, and four small. Items past 12
+  fall into a compact "More" list. The name (重箱 — stacked lacquer
+  boxes) and the layout finally line up.
+- **Category color-coding** — paths are classified into a small set
+  (`devCache`, `docker`, `simulator`, `browserCache`, `appCache`,
+  `downloads`, `media`, `archive`, `system`, ...) and each card picks
+  up a tint and icon from its category. Big `node_modules` and
+  `.gradle` directories pop visually as orange dev caches.
+- **First-launch onboarding** — new users without Full Disk Access see
+  a guided welcome screen that deep-links to the Privacy & Security
+  pane and provides a recheck button. Returning users with a saved
+  snapshot skip it entirely.
+- **App icon** — generated from `Tools/generate-icon.swift`; lacquer
+  red background with gold Bento compartments.
 
-- **Parallel scanner** — pulls subtrees off a controller and walks them with
-  `fts(3)` in two workers concurrently. Around 3 minutes for a 700 GB / 6.5M-file
+## Carried over from v0.1.0
+
+- **Parallel scanner** — controller actor + two workers running
+  concurrent `fts(3)` walks. Around 3 minutes for a 700 GB / 6.5M-file
   home directory on Apple Silicon.
-- **Folder drilldown** — sorted-by-size list with breadcrumb navigation,
-  back button, and per-folder totals.
-- **Permission handling** — paths blocked by macOS TCC are routed to a
-  separate "deferred" queue with a banner that deep-links to System
-  Settings → Privacy → Full Disk Access and a one-click retry.
-- **Snapshot persistence** — results are saved to a custom binary format at
-  `~/Library/Application Support/Jubako/snapshot.bin` and restored on the
-  next launch (typical save/load are a few seconds). Granting Full Disk
-  Access usually requires an app relaunch; previous results stay around
-  so the retry is fast.
-- **Notarized release** — signed with Developer ID, notarized, and stapled.
-  Distributed as a `.dmg` via [`snaka/homebrew-tap`](https://github.com/snaka/homebrew-tap).
+- **Folder drilldown** — breadcrumb navigation, back button, per-folder
+  totals.
+- **Permission handling** — TCC-blocked paths go to a deferred queue
+  with a banner that deep-links to Full Disk Access and offers
+  one-click retry.
+- **Snapshot persistence** — custom binary format at
+  `~/Library/Application Support/Jubako/snapshot.bin`. Save and load
+  each take a few seconds even on a fully-populated home; ⌘Q waits
+  for an in-flight save before terminating.
+- **Notarized release** — signed with Developer ID, notarized, stapled,
+  distributed as a `.dmg` via
+  [`snaka/homebrew-tap`](https://github.com/snaka/homebrew-tap).
 
 ## Not yet
 
-- First-launch onboarding for Full Disk Access
-- Bento-grid layout
 - Time-axis staleness heatmap
-- Category auto-classification (DerivedData, `node_modules`, Docker, etc.)
+- "Safe to delete" score + recommendation banner
 - Differential scan / duplicate detection
+- Submission to the official `homebrew/cask`
 
 See [DESIGN.md](DESIGN.md) for the full roadmap.
 
@@ -59,6 +78,12 @@ git clone https://github.com/snaka/jubako.git
 cd jubako
 xcodegen generate
 open Jubako.xcodeproj
+```
+
+To regenerate the app icon after editing `Tools/generate-icon.swift`:
+
+```bash
+swift Tools/generate-icon.swift
 ```
 
 ## License
