@@ -26,7 +26,7 @@ public struct ScanOptions: Sendable {
     public init(
         skipPathPrefixes: [String] = DiskScanner.defaultSkipPathPrefixes,
         skipBasenames: Set<String> = DiskScanner.defaultSkipBasenames,
-        progressEveryFiles: Int = 2000
+        progressEveryFiles: Int = 500
     ) {
         self.skipPathPrefixes = skipPathPrefixes
         self.skipBasenames = skipBasenames
@@ -51,6 +51,34 @@ public final class DiskScanner: @unchecked Sendable {
         ".DocumentRevisions-V100",
         ".TemporaryItems",
     ]
+
+    /// User-Library subpaths that are TCC-protected and will emit a flood of
+    /// "Operation not permitted" errors without Full Disk Access. Skipping them
+    /// keeps the error stream readable. Real coverage of these paths requires
+    /// the user to grant Full Disk Access (a future onboarding screen).
+    public static let tccProtectedHomeSubpaths: [String] = [
+        "Library/Mail",
+        "Library/Messages",
+        "Library/Safari",
+        "Library/Cookies",
+        "Library/HomeKit",
+        "Library/Suggestions",
+        "Library/Calendars",
+        "Library/Reminders",
+        "Library/Shortcuts",
+        "Library/IdentityServices",
+        "Library/Containers",
+        "Library/Group Containers",
+        "Library/Application Support/CallHistoryDB",
+        "Library/Application Support/CallHistoryTransactions",
+        "Library/Application Support/com.apple.TCC",
+        "Library/Application Support/AddressBook",
+        "Library/PersonalizationPortrait",
+    ]
+
+    public static func defaultSkipPathPrefixesForHome(_ home: String) -> [String] {
+        defaultSkipPathPrefixes + tccProtectedHomeSubpaths.map { home + "/" + $0 }
+    }
 
     public init() {}
 
