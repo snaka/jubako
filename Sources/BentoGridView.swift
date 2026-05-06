@@ -128,11 +128,11 @@ struct BentoCard: View {
     }
 
     private var background: some View {
-        let base = entry.isDirectory ? Color.accentColor : Color.gray
+        let base = entry.category.tintColor
         return LinearGradient(
             colors: [
-                base.opacity(hovering ? 0.18 : 0.12),
-                base.opacity(hovering ? 0.10 : 0.06)
+                base.opacity(hovering ? 0.22 : 0.14),
+                base.opacity(hovering ? 0.10 : 0.05)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -140,8 +140,7 @@ struct BentoCard: View {
     }
 
     private var borderColor: Color {
-        let base = entry.isDirectory ? Color.accentColor : Color.gray
-        return base.opacity(0.25)
+        entry.category.tintColor.opacity(0.28)
     }
 
     private var shadowColor: Color {
@@ -151,9 +150,9 @@ struct BentoCard: View {
     private var contents: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top) {
-                Image(systemName: entry.isDirectory ? "folder.fill" : "doc.fill")
+                Image(systemName: entry.category.iconName)
                     .font(iconFont)
-                    .foregroundStyle(entry.isDirectory ? Color.accentColor : Color.gray)
+                    .foregroundStyle(entry.category.tintColor)
                 Spacer()
                 if entry.isDirectory {
                     Image(systemName: "chevron.right")
@@ -168,10 +167,30 @@ struct BentoCard: View {
                 .truncationMode(.middle)
                 .multilineTextAlignment(.leading)
                 .foregroundStyle(.primary)
-            Text(byteString)
-                .font(sizeFont)
-                .foregroundStyle(.secondary)
-                .padding(.top, 4)
+            HStack(spacing: 6) {
+                Text(byteString)
+                    .font(sizeFont)
+                    .foregroundStyle(.secondary)
+                if showCategoryLabel {
+                    Text(entry.category.label)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(entry.category.tintColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule().fill(entry.category.tintColor.opacity(0.15))
+                        )
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    private var showCategoryLabel: Bool {
+        // Hide the label on the smallest cards to keep them readable.
+        switch size {
+        case .hero, .secondary, .medium: return entry.category != .userFolder && entry.category != .userDocument
+        case .small: return false
         }
     }
 
@@ -244,8 +263,8 @@ struct BentoListRow: View {
             if entry.isDirectory { onTap(entry) }
         } label: {
             HStack {
-                Image(systemName: entry.isDirectory ? "folder.fill" : "doc")
-                    .foregroundStyle(entry.isDirectory ? Color.accentColor : .gray)
+                Image(systemName: entry.category.iconName)
+                    .foregroundStyle(entry.category.tintColor)
                     .frame(width: 18)
                 Text((entry.path as NSString).lastPathComponent)
                     .lineLimit(1)
@@ -264,7 +283,7 @@ struct BentoListRow: View {
             .padding(.vertical, 7)
             .background(
                 RoundedRectangle(cornerRadius: 6)
-                    .fill(hovering ? Color.secondary.opacity(0.08) : Color.clear)
+                    .fill(hovering ? entry.category.tintColor.opacity(0.10) : Color.clear)
             )
             .contentShape(Rectangle())
         }
