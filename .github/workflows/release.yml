@@ -16,8 +16,6 @@ jobs:
   release:
     runs-on: macos-15
     timeout-minutes: 60
-    env:
-      RUNNER_TEMP_KEYCHAIN: ${{ runner.temp }}/build.keychain
     steps:
       - uses: actions/checkout@v4
 
@@ -45,7 +43,7 @@ jobs:
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           set -e
-          KC="$RUNNER_TEMP_KEYCHAIN"
+          KC="$RUNNER_TEMP/build.keychain"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
           security set-keychain-settings -lut 21600 "$KC"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KC"
@@ -56,7 +54,9 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KC"
 
           # Make the temp keychain searchable, keep the login keychain too.
-          security list-keychains -d user -s "$KC" $(security list-keychains -d user | sed -E 's/[" ]//g' | tr '\n' ' ')
+          EXISTING=$(security list-keychains -d user | sed -E 's/[" ]//g' | tr '\n' ' ')
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$KC" $EXISTING
           security default-keychain -s "$KC"
 
           security find-identity -v -p codesigning "$KC"
@@ -81,7 +81,7 @@ jobs:
             DEVELOPMENT_TEAM="$TEAM_ID" \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Developer ID Application" \
-            OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP_KEYCHAIN" \
+            OTHER_CODE_SIGN_FLAGS="--keychain $RUNNER_TEMP/build.keychain" \
             archive
 
       - name: Export archive
@@ -224,4 +224,4 @@ jobs:
       - name: Clean up keychain
         if: always()
         run: |
-          security delete-keychain "$RUNNER_TEMP_KEYCHAIN" || true
+          security delete-keychain "$RUNNER_TEMP/build.keychain" || true
