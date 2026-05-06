@@ -6,9 +6,11 @@ struct ContentView: View {
     @State private var liveBytes: Int64 = 0
     @State private var errorCount: Int = 0
     @State private var lastError: String = ""
+    @State private var deferredPaths: [String] = []
     @State private var topFiles: [ScanEntry] = []
     @State private var elapsed: TimeInterval = 0
     @State private var scanTask: Task<Void, Never>?
+    @State private var collectedSnapshot: [ScanEntry] = []  // accumulator across initial + retry scans
 
     enum Phase { case idle, scanning, done }
 
@@ -16,6 +18,7 @@ struct ContentView: View {
         VStack(spacing: 0) {
             header
             if errorCount > 0 { errorBanner }
+            if !deferredPaths.isEmpty { deferredBanner }
             Divider()
             list
         }
@@ -28,7 +31,7 @@ struct ContentView: View {
                 if phase == .scanning {
                     scanTask?.cancel()
                 } else {
-                    scanTask = Task { await runScan(root: NSHomeDirectory()) }
+                    scanTask = Task { await runScan(roots: [NSHomeDirectory()], merge: false) }
                 }
             } label: {
                 Text(phase == .scanning ? "Cancel" : "Scan Home")
@@ -76,6 +79,33 @@ struct ContentView: View {
         .background(Color.orange.opacity(0.1))
     }
 
+    private var deferredBanner: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "lock.shield.fill")
+                .foregroundStyle(.blue)
+            Text("\(deferredPaths.count) folders skipped (permissions). Grant Full Disk Access to include them.")
+                .font(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer()
+            Button("Open Privacy Settings") { openFullDiskAccessSettings() }
+                .buttonStyle(.borderless)
+                .font(.caption)
+            Button {
+                let toRetry = deferredPaths
+                scanTask = Task { await runScan(roots: toRetry, merge: true) }
+            } label: {
+                Text("Retry").frame(minWidth: 60)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .disabled(phase == .scanning)
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 6)
+        .background(Color.blue.opacity(0.08))
+    }
+
     private var list: some View {
         List(topFiles) { entry in
             HStack {
@@ -97,31 +127,46 @@ struct ContentView: View {
     }
 
     @MainActor
-    private func runScan(root: String) async {
+    private func runScan(roots: [String], merge: Bool) async {
         phase = .scanning
-        liveFiles = 0
-        liveBytes = 0
-        errorCount = 0
-        lastError = ""
-        topFiles = []
-        elapsed = 0
+        if !merge {
+            liveFiles = 0
+            liveBytes = 0
+            errorCount = 0
+            lastError = ""
+            deferredPaths = []
+            topFiles = []
+            elapsed = 0
+            collectedSnapshot = []
+        } else {
+            // Retry path: clear deferred since we're about to re-attempt those.
+            deferredPaths = []
+        }
 
-        // Run the event consumption loop off the main actor; only hop back
-        // to MainActor on rare events (progress / error / finished).
+        let baseSnapshot = collectedSnapshot
+        let mergedRoots = roots
+        let isRetry = merge
+
         await Task.detached(priority: .userInitiated) {
-            var collected: [ScanEntry] = []
-            collected.reserveCapacity(50_000)
+            var collected: [ScanEntry] = baseSnapshot
+            collected.reserveCapacity(max(50_000, baseSnapshot.count + 10_000))
 
-            let options = ScanOptions(
-                skipPathPrefixes: DiskScanner.defaultSkipPathPrefixesForHome(root)
-            )
+            // Use the home-aware skip prefixes for the primary scan; for retries
+            // (which target previously-deferred protected paths) use the base
+            // skip list so we don't skip them again.
+            let primaryRoot = mergedRoots.first ?? NSHomeDirectory()
+            let prefixes = isRetry
+                ? DiskScanner.defaultSkipPathPrefixes
+                : DiskScanner.defaultSkipPathPrefixesForHome(primaryRoot)
+            let options = ScanOptions(skipPathPrefixes: prefixes)
             let scanner = DiskScanner()
-            for await event in scanner.scan(root: root, options: options) {
+
+            for await event in scanner.scan(roots: mergedRoots, options: options) {
                 switch event {
                 case .progress(let n, let b, _):
                     await MainActor.run {
-                        liveFiles = n
-                        liveBytes = b
+                        liveFiles = isRetry ? (liveFiles + n) : n
+                        liveBytes = isRetry ? (liveBytes + b) : b
                     }
                 case .file(let f):
                     collected.append(f)
@@ -132,12 +177,24 @@ struct ContentView: View {
                         errorCount += 1
                         lastError = "\(p): \(m)"
                     }
+                case .deferred(let p, _):
+                    await MainActor.run {
+                        deferredPaths.append(p)
+                    }
                 case .finished(let n, let b, let d):
                     let top = Array(collected.sorted { $0.size > $1.size }.prefix(100))
+                    let snapshot = collected
                     await MainActor.run {
-                        liveFiles = n
-                        liveBytes = b
-                        elapsed = d
+                        if isRetry {
+                            liveFiles += n
+                            liveBytes += b
+                            elapsed += d
+                        } else {
+                            liveFiles = n
+                            liveBytes = b
+                            elapsed = d
+                        }
+                        collectedSnapshot = snapshot
                         topFiles = top
                         phase = .done
                     }
@@ -145,6 +202,12 @@ struct ContentView: View {
             }
         }.value
         scanTask = nil
+    }
+
+    private func openFullDiskAccessSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles") {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func byteString(_ n: Int64) -> String {
