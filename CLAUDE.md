@@ -48,7 +48,7 @@ Two GitHub Actions workflows:
 - `.github/workflows/build.yml` — runs on PRs and pushes to `main`; unsigned compile-only check.
 - `.github/workflows/release.yml` — runs on `v*` tag push (real release) or manual `workflow_dispatch` (dry-run that skips Release + tap bump). Full sign / notarize / staple / dmg pipeline.
 
-The release flow signs with Developer ID, notarizes via `notarytool`, builds a `.dmg`, creates a GitHub Release, and pushes an updated `Casks/jubako.rb` to `snaka/homebrew-jubako`. See **[RELEASE.md](RELEASE.md)** for the secrets list and the operator runbook.
+The release flow signs with Developer ID, notarizes via `notarytool`, builds a `.dmg`, creates a GitHub Release, and pushes an updated `Casks/jubako.rb` to `snaka/homebrew-tap`. See **[RELEASE.md](RELEASE.md)** for the secrets list and the operator runbook.
 
 ## Gotchas
 

@@ -189,7 +189,7 @@ jobs:
           SHA256: ${{ steps.hash.outputs.sha256 }}
         run: |
           set -e
-          git clone "https://x-access-token:${TAP_PUSH_TOKEN}@github.com/snaka/homebrew-jubako.git" "$RUNNER_TEMP/tap"
+          git clone "https://x-access-token:${TAP_PUSH_TOKEN}@github.com/snaka/homebrew-tap.git" "$RUNNER_TEMP/tap"
           cd "$RUNNER_TEMP/tap"
           mkdir -p Casks
           cat > Casks/jubako.rb <<EOF

@@ -2,7 +2,7 @@
 
 The release pipeline lives in [`.github/workflows/release.yml`](.github/workflows/release.yml).
 It signs, notarizes, packages, publishes a GitHub Release, and bumps the
-[`snaka/homebrew-jubako`](https://github.com/snaka/homebrew-jubako) tap formula.
+[`snaka/homebrew-tap`](https://github.com/snaka/homebrew-tap) formula.
 
 ## One-time setup
 
@@ -20,7 +20,7 @@ You'll need:
 ### 2. GitHub PAT for the tap
 
 Create a **fine-grained personal access token** restricted to the
-`snaka/homebrew-jubako` repository, with `Contents: Read and write`. Save it
+`snaka/homebrew-tap` repository, with `Contents: Read and write`. Save it
 somewhere temporarily.
 
 ### 3. Add repository secrets to `snaka/jubako`
@@ -64,9 +64,9 @@ The workflow will:
 3. Sign with Developer ID and notarize the `.app`.
 4. Build a `.dmg`, notarize and staple it.
 5. Create a GitHub Release with auto-generated notes, attach the `.dmg`.
-6. Push an updated `Casks/jubako.rb` to `snaka/homebrew-jubako`.
+6. Push an updated `Casks/jubako.rb` to `snaka/homebrew-tap`.
 
-After it succeeds, `brew install --cask snaka/jubako/jubako` should work.
+After it succeeds, `brew install --cask snaka/tap/jubako` should work.
 
 ## Troubleshooting
 
@@ -78,7 +78,7 @@ After it succeeds, `brew install --cask snaka/jubako/jubako` should work.
     --apple-id "$AC_USERNAME" --password "$AC_PASSWORD" --team-id "$AC_TEAM_ID"
   ```
   Common cause: missing hardened runtime entitlement, or signing with a non-Developer-ID identity.
-- **Tap push fails with 403** — the PAT scope is wrong; make sure it has `Contents: Read and write` for `snaka/homebrew-jubako`.
+- **Tap push fails with 403** — the PAT scope is wrong; make sure it has `Contents: Read and write` for `snaka/homebrew-tap`.
 
 ## Future migrations
 

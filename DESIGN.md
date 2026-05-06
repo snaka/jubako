@@ -178,15 +178,15 @@ UI bands: ≥70 green ("safe"), 40–69 yellow ("review"), <40 gray ("keep").
 ## 10. Distribution
 
 - **Repo**: `github.com/snaka/jubako` (this repo).
-- **Tap**: `github.com/snaka/homebrew-jubako`.
+- **Tap**: `github.com/snaka/homebrew-tap`.
 - **CI** (GitHub Actions):
   1. `xcodebuild archive`
   2. `codesign` with Developer ID (cert + key from secrets, p12 base64).
   3. `notarytool submit --wait`.
   4. `stapler staple`.
   5. Create `.dmg` (or zip), upload to GitHub Release.
-  6. Open PR to `homebrew-jubako` bumping version + sha256.
-- **Public install**: `brew install --cask snaka/jubako/jubako` (after first release).
+  6. Open PR to `homebrew-tap` bumping version + sha256.
+- **Public install**: `brew install --cask snaka/tap/jubako` (after first release).
 - **Apple Developer Program**: enrolled (2026-05-06).
 
 ## 11. Phased Roadmap

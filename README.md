@@ -23,7 +23,7 @@ A macOS-native, open-source disk analyzer with a folder-drilldown UI.
   Access usually requires an app relaunch; previous results stay around
   so the retry is fast.
 - **Notarized release** — signed with Developer ID, notarized, and stapled.
-  Distributed as a `.dmg` via [`snaka/homebrew-jubako`](https://github.com/snaka/homebrew-jubako).
+  Distributed as a `.dmg` via [`snaka/homebrew-tap`](https://github.com/snaka/homebrew-tap).
 
 ## Not yet
 
@@ -43,11 +43,13 @@ See [DESIGN.md](DESIGN.md) for the full roadmap.
 ## Installation
 
 ```bash
-brew install --cask snaka/jubako/jubako
+brew install --cask snaka/tap/jubako
 ```
 
-(The first release populates the tap; if `brew` reports the cask is missing,
-the GitHub Action that publishes it may still be running.)
+(The release pipeline writes the formula to
+[`snaka/homebrew-tap`](https://github.com/snaka/homebrew-tap); if `brew`
+reports the cask is missing, the GitHub Action that publishes it may
+still be running.)
 
 ## Building from source
 
