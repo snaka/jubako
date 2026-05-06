@@ -41,12 +41,14 @@ DESIGN.md                   # architecture / spec
 - **English in code and comments.** Localization (Japanese) is Phase 3.
 - **Default to no comments** — `DESIGN.md` is the place for rationale; code should explain itself.
 
-## Distribution pipeline
+## CI
 
-- Releases come from CI (not yet built — Phase 1 task).
-- Notarized `.dmg` → GitHub Releases on `snaka/jubako`.
-- Cask formula in **`snaka/homebrew-jubako`** tap (separate repo at `~/ghq/github.com/snaka/homebrew-jubako`); CI bumps it via PR after each release.
-- Apple Developer Program is enrolled — Developer ID signing + `notarytool` is the path.
+Two GitHub Actions workflows:
+
+- `.github/workflows/build.yml` — runs on PRs and pushes to `main`; unsigned compile-only check.
+- `.github/workflows/release.yml` — runs on `v*` tag push (real release) or manual `workflow_dispatch` (dry-run that skips Release + tap bump). Full sign / notarize / staple / dmg pipeline.
+
+The release flow signs with Developer ID, notarizes via `notarytool`, builds a `.dmg`, creates a GitHub Release, and pushes an updated `Casks/jubako.rb` to `snaka/homebrew-jubako`. See **[RELEASE.md](RELEASE.md)** for the secrets list and the operator runbook.
 
 ## Gotchas
 
