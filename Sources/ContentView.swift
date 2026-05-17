@@ -28,6 +28,7 @@ struct ContentView: View {
     @State private var scanningLabel: String = ""
     @State private var savingPhase: String = ""
     @State private var volumeUsage: VolumeUsage?
+    @State private var showHelp: Bool = false
 
     var body: some View {
         Group {
@@ -54,6 +55,12 @@ struct ContentView: View {
                 }
             }
         }
+        .sheet(isPresented: $showHelp) {
+            HelpView(onDismiss: { showHelp = false })
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .jubakoShowHelp)) { _ in
+            showHelp = true
+        }
     }
 
     private var mainContent: some View {
@@ -64,7 +71,9 @@ struct ContentView: View {
             if errorCount > 0 { errorBanner }
             if !deferredPaths.isEmpty { deferredBanner }
             if phase == .done, let usage = volumeUsage {
-                DiskUsageBar(volume: usage, scannedBytes: liveBytes)
+                DiskUsageBar(volume: usage, scannedBytes: liveBytes) {
+                    showHelp = true
+                }
             }
             if phase == .done {
                 Divider()

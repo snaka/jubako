@@ -1,6 +1,10 @@
 import SwiftUI
 import AppKit
 
+extension Notification.Name {
+    static let jubakoShowHelp = Notification.Name("jubakoShowHelp")
+}
+
 @main
 struct JubakoApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -11,6 +15,14 @@ struct JubakoApp: App {
                 .frame(minWidth: 900, minHeight: 600)
         }
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            CommandGroup(replacing: .help) {
+                Button("Jubako Help") {
+                    NotificationCenter.default.post(name: .jubakoShowHelp, object: nil)
+                }
+                .keyboardShortcut("?", modifiers: [.command])
+            }
+        }
     }
 }
 

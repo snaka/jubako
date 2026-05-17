@@ -2,10 +2,12 @@ import SwiftUI
 
 /// Three-segment volume capacity bar: bytes that Jubako has scanned, bytes
 /// otherwise in use on the same volume, and free bytes. Renders a thin bar
-/// with a one-line legend underneath.
+/// with a one-line legend underneath, plus a `?` button that opens the
+/// Help sheet for term definitions.
 struct DiskUsageBar: View {
     let volume: VolumeUsage
     let scannedBytes: Int64
+    let onShowHelp: () -> Void
 
     private var clampedScanned: Int64 {
         // The scanned figure can exceed (total - free) on a typical Mac because
@@ -30,6 +32,12 @@ struct DiskUsageBar: View {
                 Text("\(volume.volumeName) · \(byteString(volume.totalBytes)) total")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                Button(action: onShowHelp) {
+                    Image(systemName: "questionmark.circle")
+                        .font(.caption)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal)
