@@ -14,6 +14,7 @@ struct HelpView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     diskUsageSection
+                    appBadgeSection
                     rescanSection
                     deferredSection
                     snapshotSection
@@ -55,6 +56,17 @@ struct HelpView: View {
             Text("The volume label on the right names the disk containing the current scan root.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    private var appBadgeSection: some View {
+        section(title: "App badges", icon: "app.badge") {
+            Text("Folders that follow Apple's standard `~/Library` layout are tagged with the macOS app that owns them. The badge shows the app icon and display name; clicking through still navigates into the folder.")
+                .font(.callout)
+                .foregroundStyle(.primary)
+            bullet("`Containers/<bundle-id>` and `Caches/<bundle-id>` resolve to the sandboxed or non-sandboxed app with that bundle identifier.")
+            bullet("`Application Support/<name>` resolves by app name when the folder doesn't look like a reverse-DNS bundle id.")
+            bullet("Folders outside these conventions stay unlabelled — Jubako never guesses.")
         }
     }
 

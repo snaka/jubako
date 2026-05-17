@@ -180,7 +180,9 @@ struct BentoCard: View {
                 Text(byteString)
                     .font(sizeFont)
                     .foregroundStyle(.secondary)
-                if showCategoryLabel {
+                if let info = appInfo, size != .small {
+                    AppPill(info: info)
+                } else if showCategoryLabel {
                     Text(entry.category.label)
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(entry.category.tintColor)
@@ -193,6 +195,10 @@ struct BentoCard: View {
             }
             .padding(.top, 4)
         }
+    }
+
+    private var appInfo: AppInfo? {
+        AppResolver.shared.appInfo(for: entry.path)
     }
 
     private var showCategoryLabel: Bool {
@@ -279,6 +285,9 @@ struct BentoListRow: View {
                 Text((entry.path as NSString).lastPathComponent)
                     .lineLimit(1)
                     .truncationMode(.middle)
+                if let info = AppResolver.shared.appInfo(for: entry.path) {
+                    AppPill(info: info)
+                }
                 Spacer()
                 Text(ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file))
                     .font(.callout.monospacedDigit())
