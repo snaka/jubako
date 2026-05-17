@@ -5,6 +5,7 @@ import SwiftUI
 struct BentoGridView: View {
     let entries: [ScanEntry]
     let onTap: (ScanEntry) -> Void
+    var onRescan: ((ScanEntry) -> Void)? = nil
 
     var body: some View {
         ScrollView {
@@ -20,7 +21,7 @@ struct BentoGridView: View {
                             .padding(.top, 8)
                         VStack(spacing: 2) {
                             ForEach(Array(entries.dropFirst(12).prefix(200))) { e in
-                                BentoListRow(entry: e, onTap: onTap)
+                                BentoListRow(entry: e, onTap: onTap, onRescan: onRescan)
                             }
                         }
                     }
@@ -52,12 +53,12 @@ struct BentoGridView: View {
         let top = Array(entries.prefix(12))
         // Hero row: #1 large + (#2, #3, #4) stacked on the right.
         HStack(alignment: .top, spacing: 12) {
-            BentoCard(entry: top[0], size: .hero, onTap: onTap)
+            BentoCard(entry: top[0], size: .hero, onTap: onTap, onRescan: onRescan)
                 .frame(maxWidth: .infinity)
             VStack(spacing: 12) {
-                if top.count > 1 { BentoCard(entry: top[1], size: .secondary, onTap: onTap) }
-                if top.count > 2 { BentoCard(entry: top[2], size: .secondary, onTap: onTap) }
-                if top.count > 3 { BentoCard(entry: top[3], size: .secondary, onTap: onTap) }
+                if top.count > 1 { BentoCard(entry: top[1], size: .secondary, onTap: onTap, onRescan: onRescan) }
+                if top.count > 2 { BentoCard(entry: top[2], size: .secondary, onTap: onTap, onRescan: onRescan) }
+                if top.count > 3 { BentoCard(entry: top[3], size: .secondary, onTap: onTap, onRescan: onRescan) }
             }
             .frame(width: 240)
         }
@@ -68,7 +69,7 @@ struct BentoGridView: View {
             let mediumEnd = min(top.count, 8)
             HStack(spacing: 12) {
                 ForEach(4..<mediumEnd, id: \.self) { idx in
-                    BentoCard(entry: top[idx], size: .medium, onTap: onTap)
+                    BentoCard(entry: top[idx], size: .medium, onTap: onTap, onRescan: onRescan)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -85,7 +86,7 @@ struct BentoGridView: View {
                 spacing: 12
             ) {
                 ForEach(smallItems) { item in
-                    BentoCard(entry: item, size: .small, onTap: onTap)
+                    BentoCard(entry: item, size: .small, onTap: onTap, onRescan: onRescan)
                 }
             }
             .frame(minHeight: 90)
@@ -101,6 +102,7 @@ struct BentoCard: View {
     let entry: ScanEntry
     let size: CardSize
     let onTap: (ScanEntry) -> Void
+    var onRescan: ((ScanEntry) -> Void)? = nil
     @State private var hovering = false
 
     var body: some View {
@@ -125,6 +127,13 @@ struct BentoCard: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(entry.path)
+        .contextMenu {
+            if entry.isDirectory, let onRescan {
+                Button("Rescan this folder", systemImage: "arrow.clockwise") {
+                    onRescan(entry)
+                }
+            }
+        }
     }
 
     private var background: some View {
@@ -256,6 +265,7 @@ struct BentoCard: View {
 struct BentoListRow: View {
     let entry: ScanEntry
     let onTap: (ScanEntry) -> Void
+    var onRescan: ((ScanEntry) -> Void)? = nil
     @State private var hovering = false
 
     var body: some View {
@@ -290,5 +300,12 @@ struct BentoListRow: View {
         .buttonStyle(.plain)
         .onHover { hovering = $0 }
         .help(entry.path)
+        .contextMenu {
+            if entry.isDirectory, let onRescan {
+                Button("Rescan this folder", systemImage: "arrow.clockwise") {
+                    onRescan(entry)
+                }
+            }
+        }
     }
 }

@@ -79,11 +79,12 @@ struct ContentView: View {
                 if phase == .scanning {
                     scanTask?.cancel()
                 } else {
+                    guard scanTask == nil else { return }
                     scanTask = Task { await runScan(mode: .fullScan(root: NSHomeDirectory())) }
                 }
             } label: {
-                Text(phase == .scanning ? "Cancel" : "Scan Home")
-                    .frame(minWidth: 90)
+                Text(primaryButtonLabel)
+                    .frame(minWidth: 110)
             }
             .keyboardShortcut(.defaultAction)
 
@@ -110,6 +111,14 @@ struct ContentView: View {
             let label = scanningLabel.isEmpty ? "Scanning…" : "\(scanningLabel)…"
             return "\(label) \(liveFiles.formatted()) files · \(byteString(liveBytes))"
         case .done: return "Done"
+        }
+    }
+
+    private var primaryButtonLabel: String {
+        switch phase {
+        case .scanning: return "Cancel"
+        case .done:     return "Rescan Home"
+        case .idle:     return "Scan Home"
         }
     }
 
@@ -146,16 +155,10 @@ struct ContentView: View {
             Image(systemName: isStale ? "clock.badge.exclamationmark.fill" : "clock")
                 .foregroundStyle(isStale ? .orange : .secondary)
             Text(isStale
-                ? "Snapshot from \(relative) — likely stale, consider rescanning."
+                ? "Snapshot from \(relative) — likely stale. Click Rescan Home to refresh."
                 : "Snapshot from \(relative).")
                 .font(.caption)
             Spacer()
-            Button("Rescan") {
-                scanTask = Task { await runScan(mode: .fullScan(root: NSHomeDirectory())) }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(phase == .scanning)
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
@@ -252,19 +255,6 @@ struct ContentView: View {
                         .lineLimit(1)
                 }
                 .help(scanningLabel.isEmpty ? "Scanning…" : "\(scanningLabel)…")
-            } else {
-                Button {
-                    guard scanTask == nil, byParent[currentPath] != nil else { return }
-                    let target = currentPath
-                    scanTask = Task { await runScan(mode: .subtreeReplace(target: target)) }
-                } label: {
-                    Label("Rescan", systemImage: "arrow.clockwise")
-                        .labelStyle(.titleAndIcon)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .disabled(byParent[currentPath] == nil)
-                .help("Rescan this folder")
             }
 
             Text(byteString(currentTotalSize))
@@ -273,6 +263,15 @@ struct ContentView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if phase != .scanning, byParent[currentPath] != nil {
+                Button("Rescan current folder", systemImage: "arrow.clockwise") {
+                    let target = currentPath
+                    scanTask = Task { await runScan(mode: .subtreeReplace(target: target)) }
+                }
+            }
+        }
     }
 
     private func breadcrumbComponents() -> [(String, String)] {
@@ -300,9 +299,15 @@ struct ContentView: View {
     // MARK: - List
 
     private var list: some View {
-        BentoGridView(entries: entriesAtCurrent) { entry in
-            navigate(to: entry.path)
-        }
+        BentoGridView(
+            entries: entriesAtCurrent,
+            onTap: { entry in navigate(to: entry.path) },
+            onRescan: { entry in
+                guard phase != .scanning, scanTask == nil, entry.isDirectory else { return }
+                let target = entry.path
+                scanTask = Task { await runScan(mode: .subtreeReplace(target: target)) }
+            }
+        )
     }
 
     // MARK: - Navigation
