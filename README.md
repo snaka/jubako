@@ -4,12 +4,38 @@
   <p>A macOS-native, open-source disk analyzer with a Bento-grid UI.</p>
 </div>
 
-> **Status: v0.2.0 — early but usable.**
+> **Status: v0.3.0 — early but usable.**
 > Scanner, drilldown, persistence, Bento layout, category color-coding,
-> and Full Disk Access onboarding are working. Time-axis staleness
-> heatmap and differential scan from [DESIGN.md](DESIGN.md) are next.
+> Full Disk Access onboarding, per-folder rescan, disk capacity bar,
+> and app-ownership badges are working. Time-axis staleness heatmap and
+> differential scan from [DESIGN.md](DESIGN.md) are next.
 
-## What's in v0.2.0
+## What's in v0.3.0
+
+- **Per-folder rescan** — refresh a single subtree without re-walking
+  the whole home. Right-click any Bento card or list row for
+  "Rescan this folder"; right-click the breadcrumb for "Rescan current
+  folder". Deleted files drop out of the snapshot in the same pass.
+- **Disk capacity bar** — a three-segment Capsule under the banners
+  shows Scanned (orange) / Other (gray) / Free (green) for the volume
+  containing the scan root, alongside the volume name and total size.
+- **App-ownership badges** — folders under `~/Library/Containers`,
+  `Application Support`, `Caches`, `Preferences`, etc. that match
+  Apple's standard layout are labelled with the macOS app that owns
+  them (icon + display name resolved via LaunchServices). Folders
+  outside the conventions stay unlabelled.
+- **In-app Help** — a `?` button on the disk usage bar and the
+  Help → "Jubako Help" menu (⌘?) open a sheet that documents every UI
+  element introduced so far.
+- **Consolidated rescan UI** — the primary button now switches between
+  "Scan Home" / "Cancel" / "Rescan Home" by phase, and the
+  near-duplicate Rescan buttons on the snapshot/breadcrumb banners are
+  retired in favour of context menus.
+- **Saving-banner timing fix** — the snapshot-save banner now appears
+  the instant a scan finishes, so the post-scan "frozen" feel during
+  finalize + write is gone.
+
+## Carried over from v0.2.0
 
 - **Bento grid layout** — top 12 entries per folder render as one hero
   card, three secondary, four medium, and four small. Items past 12
