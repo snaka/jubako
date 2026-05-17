@@ -19,6 +19,14 @@ struct ContentView: View {
 
     enum Phase { case idle, scanning, done }
 
+    enum ScanMode {
+        case fullScan(root: String)
+        case deferredRetry(roots: [String])
+        case subtreeReplace(target: String)
+    }
+
+    @State private var scanningLabel: String = ""
+
     var body: some View {
         Group {
             if showOnboarding {
@@ -70,7 +78,7 @@ struct ContentView: View {
                 if phase == .scanning {
                     scanTask?.cancel()
                 } else {
-                    scanTask = Task { await runScan(roots: [NSHomeDirectory()], merge: false) }
+                    scanTask = Task { await runScan(mode: .fullScan(root: NSHomeDirectory())) }
                 }
             } label: {
                 Text(phase == .scanning ? "Cancel" : "Scan Home")
@@ -97,7 +105,9 @@ struct ContentView: View {
     private var statusLine: String {
         switch phase {
         case .idle: return "Idle"
-        case .scanning: return "Scanning… \(liveFiles.formatted()) files · \(byteString(liveBytes))"
+        case .scanning:
+            let label = scanningLabel.isEmpty ? "Scanning…" : "\(scanningLabel)…"
+            return "\(label) \(liveFiles.formatted()) files · \(byteString(liveBytes))"
         case .done: return "Done"
         }
     }
@@ -133,7 +143,7 @@ struct ContentView: View {
                 .font(.caption)
             Spacer()
             Button("Rescan") {
-                scanTask = Task { await runScan(roots: [NSHomeDirectory()], merge: false) }
+                scanTask = Task { await runScan(mode: .fullScan(root: NSHomeDirectory())) }
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
@@ -173,7 +183,7 @@ struct ContentView: View {
                 .font(.caption)
             Button {
                 let toRetry = deferredPaths
-                scanTask = Task { await runScan(roots: toRetry, merge: true) }
+                scanTask = Task { await runScan(mode: .deferredRetry(roots: toRetry)) }
             } label: {
                 Text("Retry").frame(minWidth: 60)
             }
@@ -222,6 +232,33 @@ struct ContentView: View {
 
             Spacer()
 
+            if phase == .scanning {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.7)
+                        .frame(width: 14, height: 14)
+                    Text("\(liveFiles.formatted()) files · \(byteString(liveBytes))")
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .help(scanningLabel.isEmpty ? "Scanning…" : "\(scanningLabel)…")
+            } else {
+                Button {
+                    guard scanTask == nil, byParent[currentPath] != nil else { return }
+                    let target = currentPath
+                    scanTask = Task { await runScan(mode: .subtreeReplace(target: target)) }
+                } label: {
+                    Label("Rescan", systemImage: "arrow.clockwise")
+                        .labelStyle(.titleAndIcon)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(byParent[currentPath] == nil)
+                .help("Rescan this folder")
+            }
+
             Text(byteString(currentTotalSize))
                 .font(.callout.monospaced())
                 .foregroundStyle(.secondary)
@@ -269,9 +306,20 @@ struct ContentView: View {
     // MARK: - Scan
 
     @MainActor
-    private func runScan(roots: [String], merge: Bool) async {
+    private func runScan(mode: ScanMode) async {
         phase = .scanning
-        if !merge {
+
+        let roots: [String]
+        let isAccumulate: Bool         // add to existing totals (deferredRetry/subtreeReplace) vs. replace (fullScan)
+        let elapsedAccumulate: Bool    // add to elapsed vs. overwrite
+        let pruneStats: (files: Int, bytes: Int64)
+
+        switch mode {
+        case .fullScan(let root):
+            roots = [root]
+            isAccumulate = false
+            elapsedAccumulate = false
+            pruneStats = (0, 0)
             liveFiles = 0
             liveBytes = 0
             errorCount = 0
@@ -279,34 +327,64 @@ struct ContentView: View {
             deferredPaths = []
             byParent = [:]
             elapsed = 0
-            rootPath = roots.first ?? NSHomeDirectory()
-            currentPath = rootPath
-        } else {
+            rootPath = root
+            currentPath = root
+            scanningLabel = "Scanning"
+        case .deferredRetry(let retryRoots):
+            roots = retryRoots
+            isAccumulate = true
+            elapsedAccumulate = true
+            pruneStats = (0, 0)
             deferredPaths = []
+            scanningLabel = "Retrying"
+        case .subtreeReplace(let target):
+            roots = [target]
+            isAccumulate = true
+            elapsedAccumulate = false
+            // Drop old entries and deferred paths under the target before re-scanning.
+            let removed = pruneSubtreeFromByParent(root: target)
+            pruneStats = removed
+            liveFiles = max(0, liveFiles - removed.files)
+            liveBytes = max(0, liveBytes - removed.bytes)
+            let prefix = target + "/"
+            deferredPaths.removeAll { $0 == target || $0.hasPrefix(prefix) }
+            let basename = (target as NSString).lastPathComponent
+            scanningLabel = "Rescanning \(basename)"
         }
+        _ = pruneStats
 
         let baseSnapshot = byParent
-        let isRetry = merge
         let primaryRoot = roots.first ?? NSHomeDirectory()
         let homeRoot = rootPath
+        let scanRoots = roots
+        let accumulate = isAccumulate
+        let bumpElapsed = elapsedAccumulate
+        // .progress events only carry counts for the current scan, so the UI
+        // adds them to the pre-scan baseline (i.e. the prune-adjusted totals).
+        let baseFiles = liveFiles
+        let baseBytes = liveBytes
 
         await Task.detached(priority: .userInitiated) {
             var localByParent = baseSnapshot
 
-            let prefixes = isRetry
-                ? DiskScanner.defaultSkipPathPrefixes
-                : DiskScanner.defaultSkipPathPrefixesForHome(primaryRoot)
+            // Build the TCC-protected skip list against the user's home. For a
+            // subtreeReplace target outside the home, the base prefixes alone
+            // are still the safer choice.
+            let prefixes = DiskScanner.defaultSkipPathPrefixesForHome(homeRoot)
+            // Keep workerCount at the default (2). Empirically 2 is the sweet
+            // spot for a full home scan (~700 GB / 6.5M files in ~3 min on
+            // Apple Silicon); raising it backs up the AsyncStream consumer on
+            // .file/.directory events and the main actor starts getting flagged
+            // as "Not Responding".
             let options = ScanOptions(skipPathPrefixes: prefixes)
             let scanner = DiskScanner()
 
-            for await event in scanner.scan(roots: roots, options: options) {
+            for await event in scanner.scan(roots: scanRoots, options: options) {
                 switch event {
                 case .progress(let n, let b, _):
-                    if !isRetry {
-                        await MainActor.run {
-                            liveFiles = n
-                            liveBytes = b
-                        }
+                    await MainActor.run {
+                        liveFiles = baseFiles + n
+                        liveBytes = baseBytes + b
                     }
                 case .file(let f):
                     let parent = (f.path as NSString).deletingLastPathComponent
@@ -325,25 +403,31 @@ struct ContentView: View {
                     }
                 case .finished(let n, let b, let d):
                     let synthesized = synthesizeShallowDirs(byParent: localByParent, rootPath: homeRoot)
+                    // accumulate adds the new counts to the baseline (carried
+                    // over from the old snapshot). For fullScan baseFiles and
+                    // baseBytes are both 0, so the same expression works.
+                    let totalFiles = accumulate ? (baseFiles + n) : n
+                    let totalBytes = accumulate ? (baseBytes + b) : b
+                    let totalElapsed: TimeInterval
+                    if accumulate && bumpElapsed {
+                        totalElapsed = await MainActor.run { elapsed } + d
+                    } else {
+                        totalElapsed = d
+                    }
                     let snapshotData = (
                         rootPath: homeRoot,
                         byParent: synthesized,
-                        totalFiles: isRetry ? (await MainActor.run { liveFiles } + n) : n,
-                        totalBytes: isRetry ? (await MainActor.run { liveBytes } + b) : b,
-                        elapsed: isRetry ? (await MainActor.run { elapsed } + d) : d
+                        totalFiles: totalFiles,
+                        totalBytes: totalBytes,
+                        elapsed: totalElapsed
                     )
                     await MainActor.run {
-                        if isRetry {
-                            liveFiles += n
-                            liveBytes += b
-                            elapsed += d
-                        } else {
-                            liveFiles = n
-                            liveBytes = b
-                            elapsed = d
-                        }
+                        liveFiles = totalFiles
+                        liveBytes = totalBytes
+                        elapsed = totalElapsed
                         byParent = synthesized
                         snapshotTimestamp = Date()
+                        scanningLabel = ""
                         phase = .done
                     }
                     let captured = await MainActor.run { () -> (errorCount: Int, lastError: String, deferredPaths: [String]) in
@@ -368,7 +452,38 @@ struct ContentView: View {
                 }
             }
         }.value
+        _ = primaryRoot
         scanTask = nil
+    }
+
+    /// Removes everything under `root` from byParent and returns the
+    /// (files, bytes) that were dropped. The parent list also has the root's
+    /// own entry removed so the scanner's new `.directory` emit for the same
+    /// path doesn't produce a duplicate.
+    ///
+    /// IMPORTANT: do all mutation on a local copy, then assign the dict back
+    /// to @State exactly once. The @State setter fires a SwiftUI transaction
+    /// on every call, which CoW-copies and deinits the whole Dictionary;
+    /// calling `byParent.removeValue` in a loop is O(N×K) retain/release and
+    /// froze the main thread for minutes on a home-sized snapshot (confirmed
+    /// via `sample`).
+    private func pruneSubtreeFromByParent(root: String) -> (files: Int, bytes: Int64) {
+        let prefix = root + "/"
+        var removedFiles = 0
+        var removedBytes: Int64 = 0
+        var local = byParent
+        let keysToRemove = local.keys.filter { $0 == root || $0.hasPrefix(prefix) }
+        for key in keysToRemove {
+            for e in local[key] ?? [] where !e.isDirectory {
+                removedFiles += 1
+                removedBytes += e.size
+            }
+            local.removeValue(forKey: key)
+        }
+        let parent = (root as NSString).deletingLastPathComponent
+        local[parent]?.removeAll { $0.path == root }
+        byParent = local
+        return (removedFiles, removedBytes)
     }
 
     // MARK: - Helpers
