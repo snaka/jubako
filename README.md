@@ -2,6 +2,7 @@
   <img src="Resources/Assets.xcassets/AppIcon.appiconset/icon_256.png" width="160" height="160" alt="Jubako icon">
   <h1>Jubako</h1>
   <p>A macOS-native, open-source disk analyzer with a Bento-grid UI.</p>
+  <img src="docs/screenshots/main.png" width="640" alt="Jubako main view showing the disk usage bar and a Bento grid of the user's home directory">
 </div>
 
 > **Status: v0.3.0 — early but usable.**
