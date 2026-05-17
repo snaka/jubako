@@ -27,6 +27,7 @@ struct ContentView: View {
 
     @State private var scanningLabel: String = ""
     @State private var savingPhase: String = ""
+    @State private var volumeUsage: VolumeUsage?
 
     var body: some View {
         Group {
@@ -62,6 +63,9 @@ struct ContentView: View {
             if let ts = snapshotTimestamp, phase == .done, !isSaving { snapshotBanner(ts) }
             if errorCount > 0 { errorBanner }
             if !deferredPaths.isEmpty { deferredBanner }
+            if phase == .done, let usage = volumeUsage {
+                DiskUsageBar(volume: usage, scannedBytes: liveBytes)
+            }
             if phase == .done {
                 Divider()
                 breadcrumbBar
@@ -452,6 +456,7 @@ struct ContentView: View {
                         scanningLabel = ""
                         phase = .done
                         savingPhase = "saving"
+                        volumeUsage = VolumeUsage.forPath(homeRoot)
                         return (errorCount, lastError, deferredPaths)
                     }
                     Task.detached(priority: .userInitiated) {
@@ -524,6 +529,7 @@ struct ContentView: View {
         deferredPaths = snap.deferredPaths
         snapshotTimestamp = snap.scannedAt
         phase = .done
+        volumeUsage = VolumeUsage.forPath(snap.rootPath)
     }
 
     private func openFullDiskAccessSettings() {
