@@ -4,9 +4,9 @@ Guidance for Claude Code when working in this repository.
 
 ## What this is
 
-Jubako is a macOS-native OSS disk analyzer. **v0.2.0 ships today**, distributed as a notarized DMG via `brew install --cask snaka/tap/jubako`.
+Jubako is a macOS-native OSS disk analyzer. **v0.3.0 ships today**, distributed as a notarized DMG via `brew install --cask snaka/tap/jubako`.
 
-Read **[DESIGN.md](DESIGN.md)** for the original design and roadmap. The bullet list in [README.md](README.md) "What's in v0.2.0" reflects what's currently shipping.
+Read **[DESIGN.md](DESIGN.md)** for the original design and roadmap. The bullet list in [README.md](README.md) "What's in v0.3.0" reflects what's currently shipping.
 
 ## Build & dev commands
 
@@ -31,12 +31,17 @@ swift Tools/generate-icon.swift
 ```
 project.yml                              # XcodeGen project definition (source of truth)
 Sources/                                 # all Swift code + Info.plist + entitlements
-  JubakoApp.swift                        # @main + AppDelegate (delays ⌘Q while a save is in flight)
-  ContentView.swift                      # top-level View; phase machine + onboarding wiring
+  JubakoApp.swift                        # @main + AppDelegate (delays ⌘Q while a save is in flight) + Help menu
+  ContentView.swift                      # top-level View; phase machine, ScanMode enum, onboarding wiring
   OnboardingView.swift                   # first-launch FDA explainer
   FDAProbe.swift                         # has-access detection by listing TCC-protected paths
-  BentoGridView.swift                    # 1+3+4+4 layout, BentoCard, BentoListRow
+  HelpView.swift                         # in-app help sheet (⌘? / ? button on disk usage bar)
+  BentoGridView.swift                    # 1+3+4+4 layout, BentoCard, BentoListRow, context-menu rescan
   Categorizer.swift                      # FileCategory enum + classify() + tints/icons
+  AppResolver.swift                      # ~/Library path → owning macOS app via LaunchServices (cached)
+  AppPill.swift                          # icon + name capsule rendered on cards for resolved apps
+  VolumeUsage.swift                      # filesystem capacity/free-space lookup
+  DiskUsageBar.swift                     # 3-segment Scanned/Other/Free Capsule bar with ? help button
   Scanner/DiskScanner.swift              # ScanController actor + 2-worker fts walker
   Persistence/SnapshotStore.swift        # save/load + prune + AppDelegate hook
   Persistence/BinarySnapshot.swift       # custom little-endian binary format
@@ -55,6 +60,11 @@ RELEASE.md                               # operator runbook for cutting a releas
 - **TCC-protected user-Library subpaths are pre-skipped** by the scanner (`tccProtectedHomeSubpaths`) and surfaced via `.deferred` events. The retry path uses `scan(roots:)` with the base skip list.
 - **Categorizer is pure-function string work**, computed lazily via `ScanEntry.category`. No scan-time cost; called only for currently-rendered cells.
 - **Snapshot is pruned before persisting**: keep all directories, drop files < 1 MB, cap each parent at 100 files. Cuts size by ~10× on a typical home.
+- **`runScan(mode:)` is the single scan entry point**, with three modes: `.fullScan(root:)`, `.deferredRetry(roots:)`, and `.subtreeReplace(target:)`. Subtree replace prunes the target's keys from `byParent` on a local copy then assigns once — never mutate `@State` collections in a loop, the SwiftUI transaction per setter call CoW-copies the whole Dictionary and froze main for minutes on a home-sized snapshot (`sample`-confirmed).
+- **Saving banner is set before `synthesizeShallowDirs`**, not after the `byParent` assignment, so the post-scan window has continuous visible progress (savingPhase: `finalizing` → `saving`).
+- **App ownership** for `~/Library` paths comes from `AppResolver`, a `@MainActor` cache keyed on the extracted identifier (bundle-id or app name). Cards render an `AppPill` only when a match is found; unknown folders stay unlabelled.
+- **Disk usage bar** clamps `scannedBytes` to `volume.usedBytes` so APFS hard links / clones / snapshots can't make the orange segment overflow the used region.
+- **`.help()` is unreliable on macOS in nested SwiftUI layouts.** Tried it, tried wrapping `NSView.toolTip` via `NSViewRepresentable`, neither fired. The convention now is an explicit Help sheet reachable via the `?` button + ⌘? menu command.
 
 ## Conventions
 
