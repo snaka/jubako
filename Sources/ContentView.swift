@@ -26,6 +26,7 @@ struct ContentView: View {
     }
 
     @State private var scanningLabel: String = ""
+    @State private var savingPhase: String = ""
 
     var body: some View {
         Group {
@@ -115,10 +116,17 @@ struct ContentView: View {
     // MARK: - Banners
 
     private var savingBanner: some View {
-        HStack(spacing: 8) {
+        let message: String = {
+            switch savingPhase {
+            case "finalizing": return "Finalizing scan results…"
+            case "saving":     return "Saving snapshot to disk… (don't quit until this finishes)"
+            default:           return "Saving snapshot… (don't quit until this finishes)"
+            }
+        }()
+        return HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text("Saving snapshot… (don't quit until this finishes)")
+            Text(message)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -402,6 +410,15 @@ struct ContentView: View {
                         deferredPaths.append(p)
                     }
                 case .finished(let n, let b, let d):
+                    // Surface the banner immediately so the post-scan window
+                    // doesn't look frozen. The spinner now stays visible
+                    // through synthesizeShallowDirs, the byParent assignment,
+                    // prune, and the on-disk save, with the label switching
+                    // from "Finalizing…" to "Saving…" along the way.
+                    await MainActor.run {
+                        isSaving = true
+                        savingPhase = "finalizing"
+                    }
                     let synthesized = synthesizeShallowDirs(byParent: localByParent, rootPath: homeRoot)
                     // accumulate adds the new counts to the baseline (carried
                     // over from the old snapshot). For fullScan baseFiles and
@@ -421,7 +438,7 @@ struct ContentView: View {
                         totalBytes: totalBytes,
                         elapsed: totalElapsed
                     )
-                    await MainActor.run {
+                    let captured = await MainActor.run { () -> (errorCount: Int, lastError: String, deferredPaths: [String]) in
                         liveFiles = totalFiles
                         liveBytes = totalBytes
                         elapsed = totalElapsed
@@ -429,9 +446,7 @@ struct ContentView: View {
                         snapshotTimestamp = Date()
                         scanningLabel = ""
                         phase = .done
-                    }
-                    let captured = await MainActor.run { () -> (errorCount: Int, lastError: String, deferredPaths: [String]) in
-                        isSaving = true
+                        savingPhase = "saving"
                         return (errorCount, lastError, deferredPaths)
                     }
                     Task.detached(priority: .userInitiated) {
@@ -447,7 +462,10 @@ struct ContentView: View {
                             entriesByParent: SnapshotStore.prune(snapshotData.byParent)
                         )
                         SnapshotStore.save(snap)
-                        await MainActor.run { isSaving = false }
+                        await MainActor.run {
+                            isSaving = false
+                            savingPhase = ""
+                        }
                     }
                 }
             }
