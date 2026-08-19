@@ -1,0 +1,6 @@
+# intent-cli repository role binding.
+# Cross-repo tooling reads this to refuse host-owned mutations from this cwd.
+
+role = "child-implementation"
+domain = "jubako"
+target_repo = "snaka/jubako"
